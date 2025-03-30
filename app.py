@@ -1,55 +1,43 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import os
-import cv2
-import numpy as np
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='')
 
-# Configuration minimale
+# Configuration de base
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    try:
-        # Vérification basique du fichier
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file part'}), 400
-            
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'No selected file'}), 400
+# Route pour servir le frontend
+@app.route('/')
+def serve_index():
+    return send_from_directory('static', 'index.html')
 
+# Route API pour l'upload
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+        
+    if file:
         # Sauvegarde temporaire
         filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filename)
-
-        # Traitement d'image minimal (exemple)
-        img = cv2.imread(filename)
-        if img is None:
-            return jsonify({'error': 'Invalid image file'}), 400
-
-        # Calculs factices (à remplacer par votre logique)
-        height, width = img.shape[:2]
-        leaf_area = width * height
-        lesion_area = int(leaf_area * 0.1)  # 10% de lésion
-        severity = 10.0  # 10%
-
-        # Construction de la réponse
-        response = {
-            'result': f"Total Leaf Area: {leaf_area} pixels²\n"
-                     f"Lesion Area: {lesion_area} pixels²\n"
-                     f"Disease Severity: {severity}%",
-            'image': filename  # Dans un cas réel, encodez en base64
-        }
         
-        return jsonify(response)
+        # Réponse factice (à remplacer par votre logique)
+        return jsonify({
+            'result': "Total Leaf Area: 1000 pixels²\nLesion Area: 200 pixels²\nDisease Severity: 20.00%",
+            'image': '/static/placeholder.jpg'  # Image de test
+        })
 
-    except Exception as e:
-        # Log l'erreur complète pour le débogage
-        app.logger.error(f"Error processing file: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+# Route pour servir les fichiers statiques
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory('static', path)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
