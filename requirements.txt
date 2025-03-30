@@ -1,7 +1,2 @@
 flask
 gunicorn
-opencv-python
-numpy
-werkzeug
-flask-cors
-
