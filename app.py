@@ -8,7 +8,7 @@ UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Serve the frontend
+# Serve the frontend at root
 @app.route('/')
 def serve_index():
     return send_from_directory(app.static_folder, 'index.html')
@@ -29,10 +29,10 @@ def upload_file():
         
         return jsonify({
             'result': "Total Leaf Area: 1000 pixels²\nLesion Area: 200 pixels²\nDisease Severity: 20.00%",
-            'image': '/static/placeholder.jpg'
+            'image': '/static/placeholder.jpg'  # Ensure this file exists
         })
 
-# Serve static files explicitly
+# Serve static files
 @app.route('/static/<path:path>')
 def serve_static(path):
     return send_from_directory(app.static_folder, path)
