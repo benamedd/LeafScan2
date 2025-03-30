@@ -1,11 +1,26 @@
 document.addEventListener("DOMContentLoaded", () => {
-    // Récupération des éléments avec vérification
-    const getElement = (id) => {
+    // Fonction sécurisée pour récupérer les éléments
+    const getElement = (id, required = true) => {
         const el = document.getElementById(id);
-        if (!el) console.error(`Élément #${id} introuvable`);
+        if (!el && required) {
+            console.error(`Element #${id} not found`);
+            showError(`Critical element #${id} missing`);
+        }
         return el;
     };
 
+    // Fonction pour afficher les erreurs
+    const showError = (message, technical = '') => {
+        const errorHtml = `
+            <div class="error-alert">
+                <p>${message}</p>
+                ${technical ? `<small>${technical}</small>` : ''}
+            </div>
+        `;
+        elements.resultSection.innerHTML = errorHtml;
+    };
+
+    // Récupération des éléments
     const elements = {
         fileInput: getElement('file'),
         analyzeBtn: getElement('analyze-btn'),
@@ -13,123 +28,181 @@ document.addEventListener("DOMContentLoaded", () => {
         resultSection: getElement('result')
     };
 
-    // Vérification des éléments critiques
+    // Vérification finale des éléments
     if (Object.values(elements).some(el => !el)) {
-        console.error("Éléments manquants - arrêt de l'initialisation");
+        showError("Application initialization failed", "Required elements missing");
         return;
     }
 
     // Création du bouton Export PDF
-    const exportBtn = document.createElement("button");
-    exportBtn.textContent = "Export PDF";
-    exportBtn.classList.add("primary-btn");
-    exportBtn.style.display = "none";
-    document.body.appendChild(exportBtn);
-
+    const exportBtn = createExportButton();
     let selectedFile = null;
 
-    // Gestion de la sélection de fichier avec prévisualisation
-    elements.fileInput.addEventListener("change", (e) => {
-        selectedFile = e.target.files[0];
-        elements.analyzeBtn.disabled = !selectedFile;
+    // Gestion des événements
+    setupEventListeners();
 
-        if (selectedFile) {
-            const previewUrl = URL.createObjectURL(selectedFile);
-            elements.resultSection.innerHTML = `
-                <p><strong>Selected File:</strong> ${selectedFile.name}</p>
-                <img src="${previewUrl}" alt="Preview" style="max-width: 200px;">
-            `;
-        } else {
-            elements.resultSection.innerHTML = "";
-        }
-    });
+    function createExportButton() {
+        const btn = document.createElement("button");
+        btn.textContent = "Export PDF";
+        btn.classList.add("primary-btn", "export-btn");
+        btn.style.display = "none";
+        document.body.appendChild(btn);
+        return btn;
+    }
 
-    // Gestion de l'analyse
-    elements.analyzeBtn.addEventListener("click", async () => {
+    function setupEventListeners() {
+        // Sélection de fichier avec prévisualisation
+        elements.fileInput.addEventListener("change", handleFileSelect);
+
+        // Bouton d'analyse
+        elements.analyzeBtn.addEventListener("click", analyzeImage);
+
+        // Bouton de rafraîchissement
+        elements.refreshBtn.addEventListener("click", resetForm);
+
+        // Bouton d'export PDF
+        exportBtn.addEventListener("click", exportToPDF);
+    }
+
+    async function analyzeImage() {
         if (!selectedFile) return;
 
-        const formData = new FormData();
-        formData.append("file", selectedFile);
-        elements.resultSection.innerHTML = "<p>Processing...</p>";
-        exportBtn.style.display = "none";
+        // UI Loading state
+        setLoadingState(true);
 
         try {
-            // Utilisation d'un chemin relatif pour la production
+            const formData = new FormData();
+            formData.append("file", selectedFile);
+
             const response = await fetch("/upload", {
                 method: "POST",
                 body: formData
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Server responded with ${response.status}`);
             }
 
             const data = await response.json();
+            displayResults(data);
 
-            if (data.error) {
-                elements.resultSection.innerHTML = `<p class='error'>${data.error}</p>`;
-            } else {
-                const resultText = data.result.replace(/\n/g, '<br>');
-                const highlightedText = resultText
-                    .replace("Total Leaf Area:", "<span class='bold-text'>Total Leaf Area:</span>")
-                    .replace("Lesion Area:", "<span class='bold-text'>Lesion Area:</span>")
-                    .replace("Disease Severity:", "<span class='bold-text'>Disease Severity:</span>")
-                    .replace(/(\d+) pixels²/g, "<span class='green-value'>$1<span class='red-separator'> pixels²</span></span>")
-                    .replace(/(\d+\.\d+)%/g, "<span class='red-value'>$1<span class='red-separator'>%</span></span>");
-
-                elements.resultSection.innerHTML = `
-                    <h2>Analysis Result</h2>
-                    <div class="result-content">${highlightedText}</div>
-                    ${data.image ? `<img src="${data.image}" alt="Processed Leaf Image" class="result-image">` : ''}
-                `;
-                exportBtn.style.display = "block";
-            }
         } catch (error) {
-            console.error("Error:", error);
-            elements.resultSection.innerHTML = `
-                <p class='error'>Failed to analyze the image. ${error.message}</p>
-                <p>Please ensure the server is running and try again.</p>
-            `;
+            console.error("Analysis failed:", error);
+            showError(
+                "Failed to analyze the image",
+                error.message || "Please check your connection and try again"
+            );
+        } finally {
+            setLoadingState(false);
         }
-    });
+    }
 
-    // Gestion du rafraîchissement
-    elements.refreshBtn.addEventListener("click", () => {
+    function handleFileSelect(event) {
+        selectedFile = event.target.files[0];
+        elements.analyzeBtn.disabled = !selectedFile;
+
+        if (selectedFile) {
+            showFilePreview(selectedFile);
+        } else {
+            elements.resultSection.innerHTML = "";
+        }
+    }
+
+    function showFilePreview(file) {
+        const previewUrl = URL.createObjectURL(file);
+        elements.resultSection.innerHTML = `
+            <div class="file-preview">
+                <p><strong>Selected File:</strong> ${file.name}</p>
+                <img src="${previewUrl}" alt="Preview">
+            </div>
+        `;
+        
+        // Clean up object URL when done
+        setTimeout(() => URL.revokeObjectURL(previewUrl), 1000);
+    }
+
+    function displayResults(data) {
+        if (data.error) {
+            showError(data.error);
+            return;
+        }
+
+        // Formatage des résultats
+        const formattedResult = formatResultText(data.result);
+        
+        elements.resultSection.innerHTML = `
+            <div class="analysis-results">
+                <h2>Analysis Result</h2>
+                <div class="result-content">${formattedResult}</div>
+                ${data.image ? `<img src="${data.image}" alt="Processed result" class="result-image">` : ''}
+            </div>
+        `;
+        
+        exportBtn.style.display = "block";
+    }
+
+    function formatResultText(resultText) {
+        return resultText
+            .replace(/\n/g, '<br>')
+            .replace("Total Leaf Area:", "<span class='bold-text'>Total Leaf Area:</span>")
+            .replace("Lesion Area:", "<span class='bold-text'>Lesion Area:</span>")
+            .replace("Disease Severity:", "<span class='bold-text'>Disease Severity:</span>")
+            .replace(/(\d+) pixels²/g, "<span class='green-value'>$1<span class='unit'> pixels²</span></span>")
+            .replace(/(\d+\.\d+)%/g, "<span class='red-value'>$1<span class='unit'>%</span></span>");
+    }
+
+    function resetForm() {
         elements.fileInput.value = "";
         selectedFile = null;
         elements.analyzeBtn.disabled = true;
         elements.resultSection.innerHTML = "";
         exportBtn.style.display = "none";
-    });
+    }
 
-    // Gestion de l'export PDF
-    exportBtn.addEventListener("click", () => {
-        if (window.jspdf) {
+    function exportToPDF() {
+        if (!window.jspdf) {
+            showError("PDF export unavailable", "Required library not loaded");
+            return;
+        }
+
+        try {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             
-            // Titre
             doc.setFontSize(16);
             doc.text("LeafScan Analysis Report", 10, 10);
             
-            // Contenu avec formatage basique
             doc.setFontSize(12);
             const lines = elements.resultSection.innerText.split('\n');
+            
             lines.forEach((line, index) => {
-                doc.text(line, 10, 20 + (index * 7));
+                if (index < 20) { // Prevent overflow
+                    doc.text(line, 10, 20 + (index * 7));
+                }
             });
             
             doc.save("LeafScan_Report.pdf");
-        } else {
-            alert("PDF export feature is not available");
-            console.error("jsPDF library not loaded");
+        } catch (error) {
+            console.error("PDF export failed:", error);
+            showError("Failed to generate PDF", error.message);
         }
-    });
+    }
+
+    function setLoadingState(isLoading) {
+        elements.analyzeBtn.disabled = isLoading;
+        elements.analyzeBtn.textContent = isLoading ? "Analyzing..." : "Analyze";
+        elements.fileInput.disabled = isLoading;
+    }
 
     // Enregistrement du Service Worker
     if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("/sw.js")
-            .then(registration => console.log("SW registered:", registration.scope))
-            .catch(error => console.log("SW registration failed:", error));
+            .then(registration => {
+                console.log("ServiceWorker registered:", registration.scope);
+            })
+            .catch(error => {
+                console.error("ServiceWorker registration failed:", error);
+            });
     }
 });
