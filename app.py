@@ -1,9 +1,14 @@
-﻿# -*- coding: utf-8 -*-
-import os
-import cv2
-import numpy as np
-from flask import Flask, render_template, request, redirect, url_for, send_from_directory, jsonify
+# -*- coding: utf-8 -*-
+from flask import Flask, request, jsonify
+from leaf_analysis import analyze_leaf
 from werkzeug.utils import secure_filename
+import os
+
+app = Flask(__name__, static_folder='static')
+
+
+import cv2
+import numpy as np 
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
@@ -35,9 +40,13 @@ def analyze_leaf(image_path):
         return None, "Error: No leaf detected."
     
     severity = (lesion_area / leaf_area) * 100
-    result_text = f"Total Leaf Area: {leaf_area} pixels²\nLesion Area: {lesion_area} pixels²\nDisease Severity: {severity:.2f}%"
+    result_text = f"Total Leaf Area: {leaf_area} pixels²\nLesion Area: {lesion_area} pixels²\nDisease 
+
+Severity: {severity:.2f}%"
     
-    contours, _ = cv2.findContours(mask_lesion, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(mask_lesion, cv2.RETR_EXTERNAL, 
+
+cv2.CHAIN_APPROX_SIMPLE)
     cv2.drawContours(image, contours, -1, (0, 0, 255), 2)
     result_path = os.path.join(RESULT_FOLDER, os.path.basename(image_path))
     cv2.imwrite(result_path, image)
